@@ -1,10 +1,11 @@
 import com.sksamuel.elastic4s.RefreshPolicy
 import com.sksamuel.elastic4s.bulk.BulkCompatibleRequest
 import com.sksamuel.elastic4s.embedded.LocalNode
+import com.sksamuel.elastic4s.http.bulk.BulkResponse
 import com.sksamuel.elastic4s.http.search.SearchResponse
-import com.sksamuel.elastic4s.http.{RequestFailure, RequestSuccess}
+import com.sksamuel.elastic4s.http.{RequestFailure, RequestSuccess, Response}
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
 
@@ -42,12 +43,12 @@ object Main extends App {
       Iterable.empty
   }
 
-  val insert = client.execute {
+  val insert: Future[Response[BulkResponse]] = client.execute {
     bulk(requests)
   }
 
-  val resp = client.execute {
-    search("minio") matchAllQuery()
+  val resp: Future[Response[SearchResponse]] = client.execute {
+    search("minio")
   }
 
   // resp is a Response[+U] ADT consisting of either a RequestFailure containing the

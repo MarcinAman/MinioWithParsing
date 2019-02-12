@@ -23,7 +23,7 @@ object Main extends App {
   MinioUtils.uploadFile(fileParameters)
   println("File was uploaded")
 
-  val localNode = LocalNode("mycluster", "/tmp/datapath9")
+  val localNode = LocalNode("mycluster", "/tmp/datapath14")
 
   // in this example we create a client attached to the embedded node, but
   // in a real application you would provide the HTTP address to the ElasticClient constructor.
@@ -41,10 +41,9 @@ object Main extends App {
 
   val mapRecordToRequest: record[Int, String] => IndexRequest =
     (v: record[Int, String]) => indexInto("minio" / "file").fields("content" ->  v.content)
-      .refresh(RefreshPolicy.IMMEDIATE)
 
   val execute = (v:Iterable[BulkCompatibleRequest]) => client.execute {
-    bulk(v)
+    bulk(v).refresh(RefreshPolicy.IMMEDIATE)
   }
 
   val parser: Future[Response[BulkResponse]] = Source.single(fileParameters)
@@ -59,15 +58,13 @@ object Main extends App {
     .runWith(Sink.fold(List.empty[IndexRequest])((acc, e) => e :: acc))
     .flatMap(execute)
 
-  // resp is a Response[+U] ADT consisting of either a RequestFailure containing the
-  // Elasticsearch error details, or a RequestSuccess[U] that depends on the type of request.
-  // In this case it is a RequestSuccess[SearchResponse]
-  val indexRefresh = client.execute {
+  val refresh = client.execute {
     refreshIndex("minio")
   }
 
+  // Just to get rid of the eventuall consistency problem
   parser.await
-  indexRefresh.await
+  refresh.await
 
   val resp: Future[Response[SearchResponse]] = client.execute {
     search("minio")

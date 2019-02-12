@@ -23,7 +23,8 @@ object Main extends App {
   MinioUtils.uploadFile(fileParameters)
   println("File was uploaded")
 
-  val localNode = LocalNode("mycluster", "/tmp/datapath14")
+  val nodeProperties = SetupProvider.provideNodeProperties()
+  val localNode = LocalNode(nodeProperties.clusterName, nodeProperties.directory)
 
   // in this example we create a client attached to the embedded node, but
   // in a real application you would provide the HTTP address to the ElasticClient constructor.

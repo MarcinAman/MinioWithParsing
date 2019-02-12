@@ -4,7 +4,7 @@ import scala.util.Try
 
 object CsvReader {
   def readFromMinio(fileParameteres: FileParameters)(implicit ec: ExecutionContext): Future[Try[Source]] = {
-    val minioClient = ConnectionProvider.provideMinioClient()
+    val minioClient = SetupProvider.provideMinioClient()
 
     Future(Try(
       Source.fromInputStream(minioClient.getObject(fileParameteres.bucketName, fileParameteres.fileName)

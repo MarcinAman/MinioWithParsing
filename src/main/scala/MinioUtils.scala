@@ -5,7 +5,7 @@ import com.typesafe.config.ConfigFactory
 
 object MinioUtils {
   def uploadFile(fileParameters: FileParameters): Unit = {
-    val minioClient = ConnectionProvider.provideMinioClient()
+    val minioClient = SetupProvider.provideMinioClient()
 
     minioClient.makeBucket(fileParameters.bucketName)
 
@@ -15,7 +15,7 @@ object MinioUtils {
   }
 
   def removeTestingBucket(fileParameters: FileParameters): Unit = {
-    val minioClient = ConnectionProvider.provideMinioClient()
+    val minioClient = SetupProvider.provideMinioClient()
 
     minioClient.removeObject(fileParameters.bucketName, fileParameters.fileName)
     minioClient.removeBucket(fileParameters.bucketName)

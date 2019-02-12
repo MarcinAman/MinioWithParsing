@@ -51,7 +51,7 @@ object Main extends App {
     .mapAsync(6)(CsvReader.readFromMinio)
     .mapConcat[record[Int, String]] {
       case Success(v) =>
-        CsvParser.parse(v).toIterable.to[collection.immutable.Iterable]
+        CsvParser.parse(v)
       case Failure(e) =>
         println(e)
         Iterable.empty[record[Int,String]].to[collection.immutable.Iterable]

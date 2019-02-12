@@ -1,17 +1,14 @@
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.{Sink, Source}
-import com.sksamuel.elastic4s.RefreshPolicy
-import com.sksamuel.elastic4s.bulk.BulkCompatibleRequest
+import akka.stream.scaladsl.Sink
 import com.sksamuel.elastic4s.embedded.LocalNode
+import com.sksamuel.elastic4s.http.ElasticDsl._
 import com.sksamuel.elastic4s.http.bulk.BulkResponse
 import com.sksamuel.elastic4s.http.search.SearchResponse
-import com.sksamuel.elastic4s.http.{RequestFailure, RequestSuccess, Response}
+import com.sksamuel.elastic4s.http.{ElasticClient, RequestFailure, RequestSuccess, Response}
 import com.sksamuel.elastic4s.indexes.IndexRequest
 
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.{Failure, Success}
-import com.sksamuel.elastic4s.http.ElasticDsl._
 
 
 object Main extends App {
@@ -27,49 +24,23 @@ object Main extends App {
   val nodeProperties = SetupProvider.provideNodeProperties()
   val localNode = LocalNode(nodeProperties.clusterName, nodeProperties.directory)
 
-  val client = localNode.client(shutdownNodeOnClose = true)
+  val client: ElasticClient = localNode.client(shutdownNodeOnClose = true)
+  val esRepository = EsRepository(client)
 
-  client.execute {
-    createIndex("minio").mappings(
-      mapping("file").fields(
-        textField("content")
-      )
-    )
-  }.await
+  esRepository.initializeSchema().await
 
-  val mapRecordToRequest: record[Int, String] => IndexRequest =
-    (v: record[Int, String]) => indexInto("minio" / "file").fields("content" ->  v.content)
-
-  val execute = (v:Iterable[BulkCompatibleRequest]) => client.execute {
-    bulk(v).refresh(RefreshPolicy.IMMEDIATE)
-  }
-
-  val parser: Future[Response[BulkResponse]] = Source.single(fileParameters)
-    .mapAsync(6)(CsvReader.readFromMinio)
-    .mapConcat[record[Int, String]] {
-      case Success(v) =>
-        CsvParser.parse(v)
-      case Failure(e) =>
-        println(e)
-        Iterable.empty[record[Int,String]].to[collection.immutable.Iterable]
-    }.map(mapRecordToRequest)
+  val parser: Future[Response[BulkResponse]] = CsvParser.process(fileParameters)
+    .map(e => esRepository.mapRecordToRequest(e, indexType = "minio", documentType = "file"))
     .runWith(Sink.fold(List.empty[IndexRequest])((acc, e) => e :: acc))
-    .flatMap(execute)
-
-  val refresh = client.execute {
-    refreshIndex("minio")
-  }
+    .flatMap(esRepository.execute)
 
   // Just to get rid of the eventuall consistency problem
   parser.await
-  refresh.await
+  esRepository.refresh("minio").await
 
-  val resp: Future[Response[SearchResponse]] = client.execute {
-    search("minio")
-  }
+  val resp = esRepository.findAll("minio")
 
   val materializedResponse = resp.await
-
 
   println("---- Search Results ----")
   materializedResponse match {

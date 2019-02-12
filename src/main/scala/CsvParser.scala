@@ -1,4 +1,3 @@
-import Main.fileParameters
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
@@ -20,7 +19,7 @@ object CsvParser {
     }
   }
 
-  def parse(file: io.Source): collection.immutable.Iterable[record[Int,String]] = {
+  private def parse(file: io.Source): collection.immutable.Iterable[record[Int,String]] = {
     file.getLines()
       .filter(e => !e.trim().equals(""))
       .map(e => parseSingleRecord(e))

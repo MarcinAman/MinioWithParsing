@@ -13,6 +13,12 @@ object SetupProvider {
       directory = ConfigFactory.load().getString("node.directory")
     )
 
+  def provideFileData(): FileParameters =
+    FileParameters(
+      bucketName = ConfigFactory.load().getString("bucket.name"),
+      fileName = ConfigFactory.load().getString("bucket.file")
+    )
+
   private def loadConnectionProperites = MinioConnectionProperties(
     ConfigFactory.load().getString("minio.connection.endpoint"),
     ConfigFactory.load().getString("minio.connection.login"),

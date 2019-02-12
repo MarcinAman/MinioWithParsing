@@ -11,6 +11,7 @@ import com.sksamuel.elastic4s.indexes.IndexRequest
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
+import com.sksamuel.elastic4s.http.ElasticDsl._
 
 
 object Main extends App {
@@ -18,7 +19,7 @@ object Main extends App {
   implicit val actorSystem: ActorSystem = ActorSystem("graphql-server")
   implicit val materializer: ActorMaterializer = ActorMaterializer()
 
-  val fileParameters = FileParameters("testingbucket", "big.txt")
+  val fileParameters = SetupProvider.provideFileData()
 
   MinioUtils.uploadFile(fileParameters)
   println("File was uploaded")
@@ -26,11 +27,7 @@ object Main extends App {
   val nodeProperties = SetupProvider.provideNodeProperties()
   val localNode = LocalNode(nodeProperties.clusterName, nodeProperties.directory)
 
-  // in this example we create a client attached to the embedded node, but
-  // in a real application you would provide the HTTP address to the ElasticClient constructor.
   val client = localNode.client(shutdownNodeOnClose = true)
-
-  import com.sksamuel.elastic4s.http.ElasticDsl._
 
   client.execute {
     createIndex("minio").mappings(

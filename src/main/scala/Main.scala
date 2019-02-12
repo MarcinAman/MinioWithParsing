@@ -44,7 +44,9 @@ object Main extends App {
     case Success(savedFileParameters) =>
       CsvParser.process(savedFileParameters)
         .map(e => esRepository.mapRecordToRequest(e, indexType = "minio", documentType = "file"))
-    case Failure(_) => Source.empty[IndexRequest]
+    case Failure(e) =>
+      println(e)
+      Source.empty[IndexRequest]
   }).runWith(Sink.fold(List.empty[IndexRequest])((acc, e) => e :: acc))
     .flatMap(esRepository.execute)
 

@@ -27,16 +27,17 @@ object Main extends App {
   val client: ElasticClient = localNode.client(shutdownNodeOnClose = true)
   val esRepository = EsRepository(client)
 
-  esRepository.initializeSchema().await
-
   val parser: Future[Response[BulkResponse]] = CsvParser.process(fileParameters)
     .map(e => esRepository.mapRecordToRequest(e, indexType = "minio", documentType = "file"))
     .runWith(Sink.fold(List.empty[IndexRequest])((acc, e) => e :: acc))
     .flatMap(esRepository.execute)
 
   // Just to get rid of the eventuall consistency problem
-  parser.await
-  esRepository.refresh("minio").await
+  (for {
+   _ <- esRepository.initializeSchema()
+    _ <- parser
+    r <- esRepository.refresh("minio")
+  } yield r).await
 
   val resp = esRepository.findAll("minio")
 

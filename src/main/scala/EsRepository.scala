@@ -1,3 +1,5 @@
+import akka.NotUsed
+import akka.stream.scaladsl.Source
 import com.sksamuel.elastic4s.RefreshPolicy
 import com.sksamuel.elastic4s.bulk.BulkCompatibleRequest
 import com.sksamuel.elastic4s.http.ElasticDsl.{createIndex, mapping, textField, _}
@@ -13,14 +15,14 @@ import scala.concurrent.{ExecutionContext, Future}
 
 case class EsRepository (client: ElasticClient) {
   def initializeSchema(indexName: String = "minio", mappingName: String ="file", field: String = "content")
-                      (implicit ec: ExecutionContext): Future[Response[CreateIndexResponse]] = {
-    client.execute {
+                      (implicit ec: ExecutionContext): Source[Response[CreateIndexResponse], NotUsed] = {
+    Source.fromFuture(client.execute {
       createIndex(indexName).mappings(
         mapping(mappingName).fields(
           textField(field)
         )
       )
-    }
+    })
   }
 
   def refresh(index: String): Future[Response[RefreshIndexResponse]] = {

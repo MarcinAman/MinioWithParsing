@@ -1,14 +1,17 @@
+import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.Sink
+import akka.stream.scaladsl.{Sink, Source}
 import com.sksamuel.elastic4s.embedded.LocalNode
 import com.sksamuel.elastic4s.http.ElasticDsl._
 import com.sksamuel.elastic4s.http.bulk.BulkResponse
+import com.sksamuel.elastic4s.http.index.CreateIndexResponse
 import com.sksamuel.elastic4s.http.search.SearchResponse
 import com.sksamuel.elastic4s.http.{ElasticClient, RequestFailure, RequestSuccess, Response}
 import com.sksamuel.elastic4s.indexes.IndexRequest
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.{Failure, Success, Try}
 
 
 object Main extends App {
@@ -16,25 +19,33 @@ object Main extends App {
   implicit val actorSystem: ActorSystem = ActorSystem("graphql-server")
   implicit val materializer: ActorMaterializer = ActorMaterializer()
 
-  val fileParameters = SetupProvider.provideFileData()
-
-  MinioUtils.uploadFile(fileParameters)
-  println("File was uploaded")
-
   val nodeProperties = SetupProvider.provideNodeProperties()
   val localNode = LocalNode(nodeProperties.clusterName, nodeProperties.directory)
 
   val client: ElasticClient = localNode.client(shutdownNodeOnClose = true)
   val esRepository = EsRepository(client)
 
-  val parser: Future[Response[BulkResponse]] = CsvParser.process(fileParameters)
-    .map(e => esRepository.mapRecordToRequest(e, indexType = "minio", documentType = "file"))
-    .runWith(Sink.fold(List.empty[IndexRequest])((acc, e) => e :: acc))
+
+  val fileParameters = SetupProvider.provideFileData()
+
+  val fileUpload = MinioUtils.uploadFile(fileParameters)
+
+  val initializeSchema: Source[Try[FileParameters], NotUsed]
+     = fileUpload.map(f => {
+    esRepository.initializeSchema() //quietly ignore errors from es
+    f}
+  )
+
+  val parser: Future[Response[BulkResponse]] = initializeSchema.flatMapConcat({
+    case Success(savedFileParameters) =>
+      CsvParser.process(savedFileParameters)
+        .map(e => esRepository.mapRecordToRequest(e, indexType = "minio", documentType = "file"))
+    case Failure(_) => Source.empty[IndexRequest]
+  }).runWith(Sink.fold(List.empty[IndexRequest])((acc, e) => e :: acc))
     .flatMap(esRepository.execute)
 
-  // Just to get rid of the eventuall consistency problem
+  // Just to get rid of the eventual consistency problem and force execution order
   (for {
-   _ <- esRepository.initializeSchema()
     _ <- parser
     r <- esRepository.refresh("minio")
   } yield r).await
@@ -45,12 +56,12 @@ object Main extends App {
 
   println("---- Search Results ----")
   materializedResponse match {
-    case failure: RequestFailure => println("We failed " + failure.error)
+    case failure: RequestFailure => println("Request failed: " + failure.error)
     case results: RequestSuccess[SearchResponse] =>
       println(results.result.hits.hits.toList)
   }
 
-  materializedResponse foreach(e => println(s"total hits: ${e.totalHits}"))
+  materializedResponse foreach (e => println(s"total hits: ${e.totalHits}"))
 
   client.close()
 

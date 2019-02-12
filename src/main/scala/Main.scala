@@ -5,7 +5,6 @@ import akka.stream.scaladsl.{Sink, Source}
 import com.sksamuel.elastic4s.embedded.LocalNode
 import com.sksamuel.elastic4s.http.ElasticDsl._
 import com.sksamuel.elastic4s.http.bulk.BulkResponse
-import com.sksamuel.elastic4s.http.index.CreateIndexResponse
 import com.sksamuel.elastic4s.http.search.SearchResponse
 import com.sksamuel.elastic4s.http.{ElasticClient, RequestFailure, RequestSuccess, Response}
 import com.sksamuel.elastic4s.indexes.IndexRequest
@@ -24,11 +23,16 @@ object Main extends App {
 
   val client: ElasticClient = localNode.client(shutdownNodeOnClose = true)
   val esRepository = EsRepository(client)
-
+  val minioRepository = MinioRepository(SetupProvider.provideMinioClient())
 
   val fileParameters = SetupProvider.provideFileData()
+  minioRepository.removeTestingBucketIfExists(fileParameters)
 
-  val fileUpload = MinioUtils.uploadFile(fileParameters)
+
+
+
+
+  val fileUpload: Source[Try[FileParameters], NotUsed] = minioRepository.uploadFile(fileParameters)
 
   val initializeSchema: Source[Try[FileParameters], NotUsed]
      = fileUpload.map(f => {
@@ -65,6 +69,9 @@ object Main extends App {
 
   client.close()
 
-  MinioUtils.removeTestingBucket(fileParameters)
+  val requestURL = minioRepository
+    .requestURL(fileParameters).runWith(Sink.head).await
+
+  println(s"requested url: ${requestURL.url}")
 
 }

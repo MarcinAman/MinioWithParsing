@@ -30,12 +30,14 @@ case class MinioRepository(
     )
   }
 
+  // dev
   def removeTestingBucketIfExists(fileParameters: FileParameters): Unit = {
     if(minioClient.bucketExists(fileParameters.bucketName)){
       removeTestingBucket(fileParameters)
     }
   }
 
+  //dev
   def removeTestingBucket(fileParameters: FileParameters): Unit = {
     minioClient.removeObject(fileParameters.bucketName, fileParameters.fileName)
     minioClient.removeBucket(fileParameters.bucketName)
@@ -55,5 +57,9 @@ case class MinioRepository(
     val website = new URL(url)
     Source.single(website.openStream())
   }
+}
+
+object MinioRepository {
+  def withDefaultValues(): MinioRepository = MinioRepository(SetupProvider.provideMinioClient())
 }
 

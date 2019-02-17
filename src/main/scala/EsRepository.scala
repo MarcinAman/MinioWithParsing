@@ -2,6 +2,7 @@ import akka.NotUsed
 import akka.stream.scaladsl.Source
 import com.sksamuel.elastic4s.RefreshPolicy
 import com.sksamuel.elastic4s.bulk.BulkCompatibleRequest
+import com.sksamuel.elastic4s.embedded.LocalNode
 import com.sksamuel.elastic4s.http.ElasticDsl.{createIndex, mapping, textField, _}
 import com.sksamuel.elastic4s.http.{ElasticClient, Response}
 import com.sksamuel.elastic4s.http.ElasticDsl._
@@ -14,6 +15,8 @@ import com.sksamuel.elastic4s.indexes.IndexRequest
 import scala.concurrent.{ExecutionContext, Future}
 
 case class EsRepository (client: ElasticClient) {
+  def close(): Unit = client.close()
+
   def initializeSchema(indexName: String = "minio", mappingName: String ="file", field: String = "content")
                       (implicit ec: ExecutionContext): Source[Response[CreateIndexResponse], NotUsed] = {
     Source.fromFuture(client.execute {
@@ -41,5 +44,13 @@ case class EsRepository (client: ElasticClient) {
 
   def mapRecordToRequest(v: record[Int, String], indexType: String, documentType: String): IndexRequest = {
     indexInto(indexType / documentType).fields("content" ->  v.content)
+  }
+}
+
+object EsRepository {
+  def withDefaultValues(): EsRepository = {
+    val nodeProperties = SetupProvider.provideNodeProperties()
+    val localNode = LocalNode(nodeProperties.clusterName, nodeProperties.directory)
+    EsRepository(localNode.client(shutdownNodeOnClose = true))
   }
 }

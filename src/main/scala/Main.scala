@@ -5,6 +5,7 @@ import akka.stream.scaladsl.{Sink, Source}
 import com.sksamuel.elastic4s.embedded.LocalNode
 import com.sksamuel.elastic4s.http.ElasticDsl._
 import com.sksamuel.elastic4s.http.bulk.BulkResponse
+import com.sksamuel.elastic4s.http.index.CreateIndexResponse
 import com.sksamuel.elastic4s.http.search.SearchResponse
 import com.sksamuel.elastic4s.http.{ElasticClient, RequestFailure, RequestSuccess, Response}
 import com.sksamuel.elastic4s.indexes.IndexRequest
@@ -18,29 +19,22 @@ object Main extends App {
   implicit val actorSystem: ActorSystem = ActorSystem("graphql-server")
   implicit val materializer: ActorMaterializer = ActorMaterializer()
 
-  val nodeProperties = SetupProvider.provideNodeProperties()
-  val localNode = LocalNode(nodeProperties.clusterName, nodeProperties.directory)
+  val esRepository = EsRepository.withDefaultValues()
+  val minioRepository = MinioRepository.withDefaultValues()
 
-  val client: ElasticClient = localNode.client(shutdownNodeOnClose = true)
-  val esRepository = EsRepository(client)
-  val minioRepository = MinioRepository(SetupProvider.provideMinioClient())
-
+  //clean up before start
   val fileParameters = SetupProvider.provideFileData()
   minioRepository.removeTestingBucketIfExists(fileParameters)
 
 
 
 
+  val schemaInitialization: Future[Response[CreateIndexResponse]] =
+    esRepository.initializeSchema().runWith(Sink.head)
 
   val fileUpload: Source[Try[FileParameters], NotUsed] = minioRepository.uploadFile(fileParameters)
 
-  val initializeSchema: Source[Try[FileParameters], NotUsed]
-     = fileUpload.map(f => {
-    esRepository.initializeSchema() //quietly ignore errors from es
-    f}
-  )
-
-  val parser: Future[Response[BulkResponse]] = initializeSchema.flatMapConcat({
+  val parser: Future[Response[BulkResponse]] = fileUpload.flatMapConcat({
     case Success(savedFileParameters) =>
       CsvParser.process(savedFileParameters)
         .map(e => esRepository.mapRecordToRequest(e, indexType = "minio", documentType = "file"))
@@ -51,10 +45,11 @@ object Main extends App {
     .flatMap(esRepository.execute)
 
   // Just to get rid of the eventual consistency problem and force execution order
-  (for {
-    _ <- parser
-    r <- esRepository.refresh("minio")
-  } yield r).await
+  for {
+    _ <- schemaInitialization.await
+    _ <- parser.await
+    r <- esRepository.refresh("minio").await
+  } yield r
 
   val resp = esRepository.findAll("minio")
 
@@ -69,7 +64,7 @@ object Main extends App {
 
   materializedResponse foreach (e => println(s"total hits: ${e.totalHits}"))
 
-  client.close()
+  esRepository.close()
 
   val requestURL = minioRepository
     .requestURL(fileParameters).runWith(Sink.head).await

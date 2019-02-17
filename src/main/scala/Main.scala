@@ -2,12 +2,11 @@ import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Sink, Source}
-import com.sksamuel.elastic4s.embedded.LocalNode
 import com.sksamuel.elastic4s.http.ElasticDsl._
 import com.sksamuel.elastic4s.http.bulk.BulkResponse
 import com.sksamuel.elastic4s.http.index.CreateIndexResponse
 import com.sksamuel.elastic4s.http.search.SearchResponse
-import com.sksamuel.elastic4s.http.{ElasticClient, RequestFailure, RequestSuccess, Response}
+import com.sksamuel.elastic4s.http.{RequestFailure, RequestSuccess, Response}
 import com.sksamuel.elastic4s.indexes.IndexRequest
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -30,7 +29,7 @@ object Main extends App {
 
 
   val schemaInitialization: Future[Response[CreateIndexResponse]] =
-    esRepository.initializeSchema().runWith(Sink.head)
+    esRepository.initializeSchema()
 
   val fileUpload: Source[Try[FileParameters], NotUsed] = minioRepository.uploadFile(fileParameters)
 
